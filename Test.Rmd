@@ -1,0 +1,86 @@
+---
+title: "Learning R - First Individual Project"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+  word_document: default
+  html_notebook: default
+---
+
+In this project, I wanted to take a brief look at the effect of major sporting events/championships on the value of online sportsbooks and the interest in online betting. There are a number of factors that made it difficult to find this relationship. One, the Covid-19 Pandemic has shaken up the standard yearly cycle of sports championships. Two, gambling is slowly being legalized on a state-to-state basis across America. While many might have an interest in online gambling, only some have access. Finally, because of the new-ness of online gambling, most online sportsbooks haven't been around for too long, and even fewer are publicly traded companies. Despite all this, I was still able to identify a few events that may have provided bumps to the value of these companies. My code is below.
+
+```{r}
+#installing packages and loading libraries
+library(gtrendsR)
+library(dplyr)
+library(tidyr)
+library(tidyverse)
+library(quantmod)
+library(ggplot2)
+library(magrittr)
+library(broom)
+
+#Creating the dataframe using the gtrends package, changing NA values to 0
+trends = gtrends(keyword = c("super bowl", "NBA finals", "world series"))
+trends_over_time = trends$interest_over_time
+trends_over_time = trends_over_time %>% mutate(hits = as.numeric(hits))
+trends_over_time = trends_over_time %>% replace_na(list(hits = 0))
+trends_over_time = trends_over_time %>% filter(date >= as.Date("2019-09-12"))
+
+#Plotting Trends
+trends_over_time %>% ggplot() + geom_line(aes(x = date, y = hits, color = keyword)) + labs(title = "Google Trend Data for US Sports Championships", y = "Hits (normalized b/w 0 and 100)", x = "Date")
+
+```
+
+I used the gtrends package to take a look at the search trends of some major American sporting events. As the premier American championship, it's no surprise that the Super Bowl is one of the most searched events on Google. Because of the pandemic, the NBA finals ended up occurring just two weeks before the World Series in 2020. I'm interested to see if the closeness of these two events to each other will result in greater interest and use of online sports gambling.
+
+
+```{r}
+#Getting trends by state and US map
+trends_by_location = gtrends(keyword = c("sports betting","barstool sportsbook", "draftkings", "fanduel"), geo = "US")
+states = trends_by_location$interest_by_region
+states <- states %>% mutate(location = tolower(location))
+states_map = map_data("state")
+
+#Creating the map
+states %>% ggplot(aes(map_id = location)) + geom_map(aes(fill = hits), map = states_map) + expand_limits(x = states_map$long, y = states_map$lat) + facet_wrap(~ keyword, nrow = 2) + scale_fill_continuous(name = "Hits (Scaled to 100)") + labs(title = "Google Trend Data for Sports Betting Interest by US State")
+```
+
+It's unsurprising that the most searches for 'sports betting' are done in Nevada, home to Las Vegas (the betting capital of America). Barstool Sportsbook was first approved for launch in Pennsylvania and Michigan, which is why we see the increased searches there. With the exception of a few states, it seems that there is at least some level of interest in sports betting in most locations across the country.
+
+```{r}
+#Getting Stock Data
+start = as.Date("2019-09-12") 
+end = as.Date("2021-03-15")
+getSymbols(c("DKNG", "PENN"), src = "yahoo", from = start, to = end)
+#Transforming into dataframe
+stocks = as.xts(data.frame(DKNG = DKNG[, "DKNG.Adjusted"], PENN = PENN[, "PENN.Adjusted"]))
+names(stocks) = c("DKNG", "PENN")
+#Plotting stock prices
+stocks_series = tidy(stocks) %>% 
+  ggplot(aes(x=index,y=value, color=series)) + geom_line() + labs(title = "EOD Adjusted Stock Price of Top Gambling Companies", subtitle = "Prices from August 2019 to March 2021", y = "Price", x = "Date") +  scale_color_manual(values = c("#000040", "#deae36"), name = "Legend")
+stocks_series
+```
+
+Here's a graph of two betting operators in the United States, DraftKings (DKNG) and Penn National Gaming (PENN). The difference between the two companies is that Penn is an operator of casinos and racetracks, while DraftKings operates almost exclusively online (for now), and primarily focuses on sports as opposed to table games. I wanted to compare two companies like this as a case study into whether a sports-only betting operation reacts as similarly to big sporting events than a larger operation like Penn National gaming. From these two charts, we can see that there's a pretty strong correlation.
+
+```{r}
+#Plotting correlation of PENN vs. DKNG stock, and adding a smoother
+stocks %>% ggplot(aes(x = DKNG, y = PENN)) + geom_point() + labs(title = "Penn National Gaming Stock vs. DraftKings Stock, with a LOESS Smoother", subtitle = "September 2019 to March 2021", x = "DKNG", y = "PENN") + geom_smooth(color = "red")
+```
+
+
+
+```{r}
+#Plotting trends and stock price on the same graph for sporting events and DraftKings
+stocks <- data.frame("DKNG" = DKNG, "PENN" = PENN, "Date" = as.Date(row.names(as.data.frame(DKNG))))
+stock_trend_chart = ggplot() + geom_line(stocks, mapping = aes(x = Date, y = DKNG.DKNG.Close, color = "Price of DraftKings Stock")) + geom_line(filter(trends_over_time, keyword == "super bowl"), mapping = aes(as.Date(date), hits * 1, color = "'Super Bowl' Google Trends Hits")) + scale_y_continuous(name = "Stock Price", sec.axis = sec_axis(~./1, name = "Google Trends Hits (scaled to 100)")) + labs(title = "DraftKings Stock Price and Sporting Event Interest") + geom_line(filter(trends_over_time, keyword == "world series"), mapping = aes(as.Date(date), hits * 1, color = "'World Series' Google Trends Hits")) + geom_line(filter(trends_over_time, keyword == "NBA finals"), mapping = aes(as.Date(date), hits * 1, color = "'NBA Finals' Google Trends Hits")) + scale_color_manual(values=c("lightseagreen","mediumblue","midnightblue","mediumvioletred"),name = "Legend")
+stock_trend_chart
+```
+
+Finally, I plotted the Google trends alongside the value of the DraftKings stock. It's interesting to see which events may have triggered increases in the price of DKNG stock, and which did not. It appears that the coinciding of the NBA Finals and World Series were responsible for a brief spike in the DKNG stock price, with much smaller spikes appearing during the previous two Super Bowls.
+
+While big sporting events certainly increase the interest in sports betting, for now it seems that the value of these sports betting companies will be a factor of betting legalization - as more states legalize the business, the value of the companies will increase as more people can participate. As we get more data points, and as sports get back to their regular yearly cycle of championships, we'll get a better look into the effect of these big championships on sports betting.
+
+
